@@ -22,7 +22,7 @@ body{background:#111827;font-family:-apple-system,BlinkMacSystemFont,sans-serif;
 .pin{position:absolute;border-radius:50%;border:2px solid rgba(255,255,255,0.9);box-shadow:0 1px 4px rgba(0,0,0,0.6);transform:translate(-50%,-50%);pointer-events:auto;cursor:pointer}
 .pin.v{background:#ef4444}
 .pin.r{background:#f59e0b}
-.pin.p{background:#8b5cf6}
+.pin.p{background:#ef4444}
 .pin.ef{background:#3b82f6}
 .sbar{background:#0f172a;padding:6px 16px;font-size:11px;color:#475569;text-align:center;border-top:1px solid #1e293b;flex-shrink:0}
 .splash{position:fixed;inset:0;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:100;transition:opacity 0.5s}
@@ -71,7 +71,7 @@ body{background:#111827;font-family:-apple-system,BlinkMacSystemFont,sans-serif;
 <div class="leg">
   <div class="li"><div class="dot" style="background:#ef4444"></div>Vendido</div>
   <div class="li"><div class="dot" style="background:#f59e0b"></div>Reservado</div>
-  <div class="li"><div class="dot" style="background:#8b5cf6"></div>Preventa</div>
+  <div class="li"><div class="dot" style="background:#ef4444"></div>Preventa</div>
   <div class="li"><div class="dot" style="background:#3b82f6"></div>Etapa Futura</div>
   <div class="li"><div class="dot" style="background:transparent;border-color:#475569"></div>Disponible</div>
   <div class="lc" id="lc"></div>
@@ -124,6 +124,7 @@ const PRICE_LISTA_KEYS = ['PRECIO DE LISTA','PRECIO LISTA','PRECIO LISTA USD','L
 const PRICE_CONTADO_KEYS = ['PRECIO DE CONTADO','PRECIO CONTADO','CONTADO','PRECIO AL CONTADO'];
 const ANTICIPO_KEYS = ['ANTICIPO','ANTICIPO $','ANTICIPO (USD)','MONTO ANTICIPO'];
 const CUOTA_KEYS = ['72 CUOTAS DE','72 CUOTAS','VALOR CUOTA','CUOTA','CUOTAS','IMPORTE CUOTA','MONTO CUOTA'];
+const VENDIDO_POR_KEYS = ['VENDIDO POR'];
 
 function getVal(row, candidates){
   if(!row) return null;
@@ -156,15 +157,26 @@ function fmtPrice(v){
 function fmtPriceField(row, candidates){
   if(!row) return '<span style="color:#f87171">Lote sin fila en la planilla</span>';
   const v = getVal(row, candidates);
-  if(v === null) return '<span style="color:#fbbf24">Vacío en la planilla</span>';
+  if(v === null) return '–';
   return fmtPrice(v);
 }
 
 function fmtSurfaceField(row, candidates){
   if(!row) return '<span style="color:#f87171">Lote sin fila en la planilla</span>';
   const v = getVal(row, candidates);
-  if(v === null) return '<span style="color:#fbbf24">Vacío en la planilla</span>';
+  if(v === null) return '–';
   return fmtSurface(v);
+}
+
+// NUEVO: clasifica la columna "VENDIDO POR" en GRUPO MEC / DESARROLLADOR / OTRO
+function fmtVendidoPor(row){
+  if(!row) return '<span style="color:#f87171">Lote sin fila en la planilla</span>';
+  const v = getVal(row, VENDIDO_POR_KEYS);
+  if(v === null) return '–';
+  const up = String(v).toUpperCase();
+  if(up.includes('DESARROLLADOR')) return 'DESARROLLADOR';
+  if(up.includes('MEC')) return 'GRUPO MEC';
+  return 'OTRO';
 }
 
 const tt = document.getElementById('tt');
@@ -174,12 +186,14 @@ function showTT(e, lot, row, statusLabel){
   const anticipo = fmtPriceField(row, ANTICIPO_KEYS);
   const cuota = fmtPriceField(row, CUOTA_KEYS);
   const contado = fmtPriceField(row, PRICE_CONTADO_KEYS);
+  const vendidoPor = fmtVendidoPor(row);
   tt.innerHTML = `<div><b>Nro Lote: ${lot}</b> <span style="color:#94a3b8;font-size:11px">- ${statusLabel}</span></div>
     <div class="row"><span class="lbl">Metros</span><span class="val">${metros}</span></div>
     <div class="row"><span class="lbl">Precio de Lista</span><span class="val price">${lista}</span></div>
     <div class="row"><span class="lbl">Anticipo</span><span class="val price">${anticipo}</span></div>
     <div class="row"><span class="lbl">72 cuotas de</span><span class="val price">${cuota}</span></div>
-    <div class="row"><span class="lbl">Precio de Contado</span><span class="val price">${contado}</span></div>`;
+    <div class="row"><span class="lbl">Precio de Contado</span><span class="val price">${contado}</span></div>
+    <div class="row"><span class="lbl">Vendido por</span><span class="val">${vendidoPor}</span></div>`;
   tt.style.display = 'block';
   moveTT(e);
 }
@@ -234,7 +248,7 @@ async function init(){
   const img=$('mapimg');
   const doPaint=()=>{
     pintar(est, rowsByLot);
-    $('lc').innerHTML=`<span style="color:#ef4444;font-weight:600">${v}</span><span style="color:#94a3b8"> vend.</span>&nbsp;<span style="color:#f59e0b;font-weight:600">${r}</span><span style="color:#94a3b8"> res.</span>&nbsp;<span style="color:#8b5cf6;font-weight:600">${p}</span><span style="color:#94a3b8"> prev.</span>&nbsp;<span style="color:#3b82f6;font-weight:600">${ef}</span><span style="color:#94a3b8"> et.fut.</span>&nbsp;<span style="color:#64748b;font-weight:600">${d}</span><span style="color:#94a3b8"> disp.</span>`;
+    $('lc').innerHTML=`<span style="color:#ef4444;font-weight:600">${v}</span><span style="color:#94a3b8"> vend.</span>&nbsp;<span style="color:#f59e0b;font-weight:600">${r}</span><span style="color:#94a3b8"> res.</span>&nbsp;<span style="color:#ef4444;font-weight:600">${p}</span><span style="color:#94a3b8"> prev.</span>&nbsp;<span style="color:#3b82f6;font-weight:600">${ef}</span><span style="color:#94a3b8"> et.fut.</span>&nbsp;<span style="color:#64748b;font-weight:600">${d}</span><span style="color:#94a3b8"> disp.</span>`;
     const now=new Date();
     $('upd').textContent='Actualizado: '+now.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
     $('sbar').textContent=rows.length+' lotes · '+v+' vendidos · '+r+' reservados · '+p+' preventa · '+ef+' etapa futura · '+d+' disponibles';
