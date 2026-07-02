@@ -57,10 +57,11 @@
   .kpi-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
   .kpi-value { font-size: 30px; font-weight: 700; line-height: 1; }
   .kpi-sub { font-size: 11px; color: #94a3b8; margin-top: 3px; }
-  .kpi.vendido { border-left-color: #10b981; } .kpi.vendido .kpi-value { color: #059669; }
-  .kpi.reservado { border-left-color: #f59e0b; } .kpi.reservado .kpi-value { color: #d97706; }
-  .kpi.preventa { border-left-color: #8b5cf6; } .kpi.preventa .kpi-value { color: #7c3aed; }
-  .kpi.disponible { border-left-color: #3b82f6; } .kpi.disponible .kpi-value { color: #2563eb; }
+  /* Colores de estado unificados (donut, KPIs, leyendas, barras) */
+  .kpi.vendido { border-left-color: #dc2626; } .kpi.vendido .kpi-value { color: #dc2626; }
+  .kpi.reservado { border-left-color: #eab308; } .kpi.reservado .kpi-value { color: #ca8a04; }
+  .kpi.preventa { border-left-color: #f87171; } .kpi.preventa .kpi-value { color: #ef4444; }
+  .kpi.disponible { border-left-color: #16a34a; } .kpi.disponible .kpi-value { color: #15803d; }
 
   /* Cards */
   .card {
@@ -302,6 +303,12 @@
       </div></div>
   </div>
 
+  <!-- NUEVO: Disponibilidad por manzana (excluye Etapa futura) -->
+  <div class="card">
+    <div class="card-title">Disponibilidad por manzana</div>
+    <div id="manzana-list"><div class="empty">Cargando...</div></div>
+  </div>
+
   <!-- Estadísticas -->
   <div class="card">
     <div class="card-title">Estadísticas de ventas</div>
@@ -317,6 +324,15 @@
     </div>
   </div>
 
+  <!-- NUEVO: Comparativa mensual interanual (solo VENDIDO, todos los años sumados por mes) -->
+  <div class="card">
+    <div class="card-title">Comparativa mensual interanual (histórico de ventas)</div>
+    <div class="chart-container">
+      <canvas id="chart-mes-interanual" role="img" aria-label="Ventas históricas por mes, todos los años"></canvas>
+    </div>
+    <div id="mes-interanual-summary" style="margin-top:12px;font-size:13px;color:#334155"></div>
+  </div>
+
 </div><!-- /dashboard -->
 
 <script>
@@ -324,7 +340,7 @@ const SHEET_ID = '1TAk2DTx--S87i_3zy6m25115oURX5zLXkDnjMV0cl0Q';
 const SHEET_NAME = 'Hoja 1';
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyGaVzFFIxKgML0KaShxbhmnnZnRmWB9xQThUOlnwnc1EVJ2WSs10qq0bkt44KK6bZ1SA/exec';
 // 👉 Reemplazá esta URL cuando subas "Mapa_Clientes_Santa_Teresita.html" a su hosting definitivo
-const CLIENT_MAP_URL = 'https://eperondi2015.github.io/Tablero-Santa-Teresita/Mapa_Clientes_Santa_Teresita.html';
+const CLIENT_MAP_URL = 'https://TU-DOMINIO-AQUI.com/Mapa_Clientes_Santa_Teresita.html';
 
 function copyClientLink(btn){
   const done = (ok)=>{
@@ -362,7 +378,7 @@ const PASOS = [
   [97, '✅ ¡Casi listo, ya terminamos!...'],
 ];
 
-let chartMes = null, chartAnio = null, chartDonut = null;
+let chartMes = null, chartAnio = null, chartDonut = null, chartMesInteranual = null;
 
 function setProgress(pct, msg) {
   document.getElementById('prog-fill').style.width = pct + '%';
@@ -400,6 +416,19 @@ function parseCSV(text) {
 function setBar(id, pct) {
   const el = document.getElementById(id);
   if (el) el.style.width = Math.min(Math.max(pct, 0), 100) + '%';
+}
+
+// NUEVO: obtiene el número de manzana de una fila.
+// 1) Busca primero una columna explícita (MANZANA / MZA / MZ).
+// 2) Si no existe, la deriva del "NRO LOTE" (ej: lote 301 -> manzana 3),
+//    convención usada en la numeración de lotes de este loteo.
+function getManzana(r, g) {
+  const direct = g('MANZANA') || g('MZA') || g('MZ') || g('MANZANA N°') || g('N° MANZANA') || g('Nº MANZANA');
+  if (direct) return direct.replace(/^0+(?=\d)/, '');
+  const loteRaw = g('NRO LOTE') || g('N° LOTE') || g('Nº LOTE') || g('NRO. LOTE') || g('LOTE') || g('NUMERO DE LOTE');
+  const loteNum = parseInt(loteRaw, 10);
+  if (!isNaN(loteNum) && loteNum > 0) return String(Math.floor(loteNum / 100));
+  return null;
 }
 
 function switchTab(tab) {
@@ -445,27 +474,80 @@ function buildCharts(rows) {
   chartMes = new Chart(document.getElementById('chart-mes'), {
     type: 'bar',
     data: {
+      // Verde claro para ventas por mes (más claro que el verde de "por año")
       labels: mesCortos.length ? mesCortos : ['Sin datos'],
-      datasets: [{ label: 'Operaciones', data: mesData.length ? mesData : [0], backgroundColor: '#3b82f6', borderRadius: 6, borderSkipped: false }]
+      datasets: [{ label: 'Operaciones', data: mesData.length ? mesData : [0], backgroundColor: '#86efac', borderRadius: 6, borderSkipped: false }]
     },
-    options: commonOpts('#3b82f6')
+    options: commonOpts('#86efac')
   });
 
   chartAnio = new Chart(document.getElementById('chart-anio'), {
     type: 'bar',
     data: {
+      // Verde intenso para ventas por año (más oscuro que el de "por mes")
       labels: anioLabels.length ? anioLabels : ['Sin datos'],
-      datasets: [{ label: 'Operaciones', data: anioData.length ? anioData : [0], backgroundColor: '#10b981', borderRadius: 6, borderSkipped: false }]
+      datasets: [{ label: 'Operaciones', data: anioData.length ? anioData : [0], backgroundColor: '#15803d', borderRadius: 6, borderSkipped: false }]
     },
-    options: commonOpts('#10b981')
+    options: commonOpts('#15803d')
   });
+}
+
+// NUEVO: Comparativa mensual interanual — suma las ventas (solo estado "VENDIDO")
+// de cada mes a través de TODOS los años, para ver en qué mes se vende
+// históricamente más y en qué mes se vende menos.
+function buildInteranualChart(rows) {
+  const MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const byMesInteranual = {};
+
+  rows.forEach(r => {
+    const sit = String(r['SITUACIÓN'] || r['SITUACION'] || '').toUpperCase().trim();
+    if (sit !== 'VENDIDO') return; // Solo ventas concretadas, nunca reservado/preventa/disponible/etapa futura
+    const mes = String(r['MES'] || '').toUpperCase().trim();
+    if (mes && MESES.includes(mes)) byMesInteranual[mes] = (byMesInteranual[mes] || 0) + 1;
+  });
+
+  const labels = MESES.filter(m => byMesInteranual[m] !== undefined);
+  const data = labels.map(m => byMesInteranual[m]);
+  const cortos = labels.map(m => MESES_CORTOS[MESES.indexOf(m)]);
+
+  let maxIdx = 0, minIdx = 0;
+  data.forEach((v, i) => {
+    if (v > data[maxIdx]) maxIdx = i;
+    if (v < data[minIdx]) minIdx = i;
+  });
+
+  // Resalta el mes de mayor venta en verde intenso y el de menor venta en rojo claro;
+  // el resto queda en verde claro (misma paleta que "Estadísticas de ventas por mes").
+  const barColors = data.map((v, i) => i === maxIdx ? '#15803d' : (i === minIdx ? '#f87171' : '#86efac'));
+
+  if (chartMesInteranual) chartMesInteranual.destroy();
+  chartMesInteranual = new Chart(document.getElementById('chart-mes-interanual'), {
+    type: 'bar',
+    data: {
+      labels: cortos.length ? cortos : ['Sin datos'],
+      datasets: [{ label: 'Ventas', data: data.length ? data : [0], backgroundColor: barColors.length ? barColors : ['#86efac'], borderRadius: 6, borderSkipped: false }]
+    },
+    options: commonOpts()
+  });
+
+  const summaryEl = document.getElementById('mes-interanual-summary');
+  if (!summaryEl) return;
+  if (data.length) {
+    summaryEl.innerHTML =
+      `📈 <strong style="color:#15803d">Mes con más ventas:</strong> ${cortos[maxIdx]} (${data[maxIdx]} ${data[maxIdx] === 1 ? 'venta' : 'ventas'})` +
+      `&nbsp;&nbsp;&nbsp; 📉 <strong style="color:#dc2626">Mes con menos ventas:</strong> ${cortos[minIdx]} (${data[minIdx]} ${data[minIdx] === 1 ? 'venta' : 'ventas'})`;
+  } else {
+    summaryEl.innerHTML = '<span style="color:#94a3b8">Sin datos suficientes de ventas para esta comparativa.</span>';
+  }
 }
 
 function buildDonut(vendido, reservado, preventa, disponible) {
   if (chartDonut) chartDonut.destroy();
   const total = vendido + reservado + preventa + disponible || 1;
   const datos = [vendido, reservado, preventa, disponible];
-  const colores = ['#059669','#d97706','#7c3aed','#2563eb'];
+  // Colores unificados: Vendido=rojo, Reservado=amarillo, Preventa=rojo claro, Disponible=verde
+  const colores = ['#dc2626','#eab308','#f87171','#16a34a'];
   const etiquetas = ['Vendido','Reservado','Preventa','Disponible'];
 
   chartDonut = new Chart(document.getElementById('chart-donut'), {
@@ -530,6 +612,7 @@ async function initDashboard() {
   let contado = 0;
   const cuotas = {'12':0,'24':0,'36':0,'48':0,'60':0,'72':0};
   const vendedores = {};
+  const manzanaDisponibles = {}; // NUEVO: disponibles por manzana (excluye Etapa futura)
 
   rows.forEach(r => {
     const g = (k) => String(r[k] || '').replace(/\u200B/g,'').trim();
@@ -544,16 +627,30 @@ async function initDashboard() {
     else if (sit === 'PREVENTA') preventa++;
     else if (sit === 'DISPONIBLE') disponible++;
 
+    // Forma de pago: se sigue calculando sobre operaciones concretadas (vendido o reservado)
     if (sit === 'VENDIDO' || sit === 'RESERVADO') {
-      if (vendPor.includes('DESARROLLADOR')) devCount++;
-      else mecCount++;
-
       if (pagForm === 'CONTADO') contado++;
       else if (pagForm === 'CUOTAS' && cuotas[cantC] !== undefined) cuotas[cantC]++;
+    }
+
+    // CORRECCIÓN #1: un lote "Reservado" todavía no es una venta concretada,
+    // por lo tanto NO debe sumarse a ningún vendedor ni a Grupo MEC/Desarrollador.
+    // Solo se cuenta como venta si SITUACIÓN === 'VENDIDO'.
+    if (sit === 'VENDIDO') {
+      if (vendPor.includes('DESARROLLADOR')) devCount++;
+      else mecCount++;
 
       if (vendMEC && vendMEC.length > 1) {
         vendedores[vendMEC] = (vendedores[vendMEC] || 0) + 1;
       }
+    }
+
+    // NUEVO #2: disponibilidad por manzana. Solo cuenta lotes "Disponible";
+    // "Etapa futura" queda excluido automáticamente porque su SITUACIÓN
+    // es distinta de 'DISPONIBLE' (no se desarrolló todavía para la venta).
+    if (sit === 'DISPONIBLE') {
+      const mz = getManzana(r, g);
+      if (mz !== null) manzanaDisponibles[mz] = (manzanaDisponibles[mz] || 0) + 1;
     }
   });
 
@@ -566,12 +663,14 @@ async function initDashboard() {
   // Donut
   buildDonut(vendido, reservado, preventa, disponible);
 
-  // Barras vendido por
+  // Barras vendido por (colores fijos: Grupo MEC = bordo, Desarrollador = celeste)
   const totalOp = mecCount + devCount || 1;
   document.getElementById('cnt-mec').textContent = mecCount;
   document.getElementById('cnt-dev').textContent = devCount;
   setBar('bar-mec', mecCount / totalOp * 100);
   setBar('bar-dev', devCount / totalOp * 100);
+  document.getElementById('bar-mec').style.background = '#800020'; // Bordo
+  document.getElementById('bar-dev').style.background = '#38bdf8'; // Celeste
 
   // Barras pago
   const maxPago = Math.max(contado, ...Object.values(cuotas)) || 1;
@@ -597,8 +696,26 @@ async function initDashboard() {
     ).join('');
   }
 
+  // NUEVO: Disponibilidad por manzana (ordenado numéricamente, excluye Etapa futura)
+  const mzList = document.getElementById('manzana-list');
+  const manzanaSorted = Object.entries(manzanaDisponibles)
+    .sort((a, b) => (parseInt(a[0], 10) || 0) - (parseInt(b[0], 10) || 0));
+  if (manzanaSorted.length === 0) {
+    mzList.innerHTML = '<div class="empty">Sin datos de manzanas aún</div>';
+  } else {
+    const maxMz = Math.max(...manzanaSorted.map(([, c]) => c)) || 1;
+    mzList.innerHTML = manzanaSorted.map(([mz, c]) =>
+      `<div class="bar-row">
+        <div class="bar-label">Manzana ${mz}</div>
+        <div class="bar-track"><div class="bar-fill" style="background:#16a34a;width:${Math.round(c / maxMz * 100)}%"></div></div>
+        <div class="bar-count">${c}</div>
+      </div>`
+    ).join('');
+  }
+
   // Gráficos
   buildCharts(rows);
+  buildInteranualChart(rows); // NUEVO: comparativa mensual histórica (solo ventas)
 
   // Timestamp
   const now = new Date();
