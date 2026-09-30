@@ -865,14 +865,35 @@ function parseCSVFull(text) {
 
 // Lee la pestaña "Informe para el desarrollador" directamente de la Google Sheet
 // (requiere que la planilla esté compartida como "Cualquier persona con el enlace: Lector").
-async function fetchInformeSheet() {
+// 1º intenta por el Apps Script (?hoja=...), que no requiere que la planilla sea pública.
+//    El script debe responder { hoja, rows: [[encabezados], [fila], ...] }.
+// 2º si el script todavía no tiene esa función, intenta leer la pestaña pública (gviz).
+async function fetchInformeViaScript() {
+  const resp = await fetch(`${SCRIPT_URL}?hoja=${encodeURIComponent(INFORME_SHEET)}&_=${Date.now()}`);
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  const json = await resp.json();
+  if (json && json.error) throw new Error(json.error);
+  if (!json || !Array.isArray(json.rows)) return null; // script sin soporte para ?hoja
+  return json.rows.map(r => r.map(c => String(c ?? '')));
+}
+
+async function fetchInformeViaGviz() {
   const sel = INFORME_GID ? `gid=${INFORME_GID}` : `sheet=${encodeURIComponent(INFORME_SHEET)}`;
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&${sel}&_=${Date.now()}`;
-  const resp = await fetch(url);
+  let resp;
+  try { resp = await fetch(url); }
+  catch (e) { throw new Error('sin acceso a la planilla: actualizá el Apps Script (función hoja) o compartí la planilla como "Cualquier persona con el enlace"'); }
   if (!resp.ok) throw new Error('HTTP ' + resp.status);
   const txt = await resp.text();
-  if (/^\s*<(!DOCTYPE|html)/i.test(txt)) throw new Error('La planilla no es pública');
-  const data = parseCSVFull(txt).filter(r => r.some(c => String(c).trim() !== ''));
+  if (/^\s*<(!DOCTYPE|html)/i.test(txt)) throw new Error('la planilla no es pública');
+  return parseCSVFull(txt);
+}
+
+async function fetchInformeSheet() {
+  let raw = null;
+  try { raw = await fetchInformeViaScript(); } catch (e) { if (/no existe|not found/i.test(e.message)) throw e; }
+  if (!raw) raw = await fetchInformeViaGviz();
+  const data = raw.filter(r => r.some(c => String(c).trim() !== ''));
   if (!data.length) return [];
   const norm = h => String(h).replace(/​/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
   const head = data[0].map(norm);
@@ -897,7 +918,7 @@ async function fetchInformeSheet() {
     .map(r => {
       const forma = v(r, C.forma).toUpperCase();
       return [
-        v(r, C.lote), v(r, C.precio), v(r, C.comprador),
+        v(r, C.lote), v(r, C.precio), v(r, C.comprador).toLocaleUpperCase('es-AR'),
         forma === 'CONTADO' ? 'Contado' : forma === 'CUOTAS' ? 'Cuotas' : v(r, C.forma),
         v(r, C.cant) || (forma === 'CONTADO' ? '—' : ''),
         v(r, C.cuota) || (forma === 'CONTADO' ? '—' : '')
@@ -1074,7 +1095,7 @@ function buildDeveloperPdf(D, nominal, nominalError) {
       0: { halign: 'center', cellWidth: 18 }, 1: { halign: 'right', cellWidth: 30 },
       3: { halign: 'center', cellWidth: 26 }, 4: { halign: 'center', cellWidth: 20 }, 5: { halign: 'right', cellWidth: 28 }
     },
-    headStyles: Object.assign({}, tableBase.headStyles, { fillColor: BORDO })
+    headStyles: Object.assign({}, tableBase.headStyles, { fillColor: BORDO, halign: 'center', valign: 'middle' })
   }));
 
   // ── Pie de página ──────────────────────────
