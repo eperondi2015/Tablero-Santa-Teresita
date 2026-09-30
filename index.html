@@ -168,6 +168,7 @@
       <a href="https://docs.google.com/spreadsheets/d/1TAk2DTx--S87i_3zy6m25115oURX5zLXkDnjMV0cl0Q/edit?gid=0#gid=0" target="_blank" style="background:#14532d;color:#86efac;border:none;padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer;text-decoration:none;white-space:nowrap">📋 Listado</a>
       <button class="refresh-btn" onclick="initDashboard()">↺ Actualizar</button>
       <button class="refresh-btn" onclick="copyClientLink(this)" style="background:#166534;color:#bbf7d0">🔗 Copiar link clientes</button>
+      <button class="refresh-btn" onclick="downloadDeveloperReport(this)" style="background:#800020;color:#fecdd3">📄 Informe PDF desarrollador</button>
     </div>
   </div>
 
@@ -342,7 +343,7 @@
 
 <script>
 const SHEET_ID = '1TAk2DTx--S87i_3zy6m25115oURX5zLXkDnjMV0cl0Q';
-const SHEET_NAME = 'Hoja 1';
+const SHEET_NAME = 'Para IA'; // Pestaña que publica el Apps Script (referencia; la lectura la define el script)
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx0Htjee3K-44f4kGZ9leX0sTUu7eL2ljWj-gX1S0So2kAf_VGifDdVDFnlHo8Ee7ph4w/exec';
 // 👉 Reemplazá esta URL cuando subas "Mapa_Clientes_Santa_Teresita.html" a su hosting definitivo
 const CLIENT_MAP_URL = 'https://eperondi2015.github.io/Tablero-Santa-Teresita/Mapa_Clientes_Santa_Teresita.html';
@@ -436,6 +437,35 @@ function getManzana(r, g) {
   return null;
 }
 
+function getLoteLabel(r, g) {
+  return g('NRO LOTE') || g('N° LOTE') || g('Nº LOTE') || g('NRO. LOTE') || g('LOTE') || cellByCol(r, 1) || '?';
+}
+
+// Plugin: dibuja siempre el valor encima de cada barra (números negros y legibles)
+const valueLabelsPlugin = {
+  id: 'valueLabels',
+  afterDatasetsDraw(chart, args, opts) {
+    const { ctx } = chart;
+    const horizontal = chart.options.indexAxis === 'y';
+    const inside = opts && opts.position === 'inside';
+    ctx.save();
+    ctx.fillStyle = (opts && opts.color) || '#000';
+    ctx.font = `bold ${(opts && opts.size) || 13}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+    chart.data.datasets.forEach((ds, di) => {
+      const meta = chart.getDatasetMeta(di);
+      if (meta.hidden) return;
+      meta.data.forEach((bar, i) => {
+        const v = ds.data[i];
+        if (v === null || v === undefined || v === 0) return;
+        if (horizontal) { ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(v, bar.x + 6, bar.y); }
+        else if (inside) { ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(v, bar.x, bar.y + (bar.base - bar.y) / 2); }
+        else { ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(v, bar.x, bar.y - 4); }
+      });
+    });
+    ctx.restore();
+  }
+};
+
 function switchTab(tab) {
   document.getElementById('tab-mes').classList.toggle('active', tab === 'mes');
   document.getElementById('tab-anio').classList.toggle('active', tab === 'anio');
@@ -471,12 +501,13 @@ function buildCharts(rows) {
     responsive: true, maintainAspectRatio: false,
     plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + ctx.parsed.y + ' operación' + (ctx.parsed.y !== 1 ? 'es' : '') } } },
     scales: {
-      y: { ticks: { stepSize: 1, color: '#94a3b8', font: { size: 11 } }, grid: { color: '#f1f5f9' }, border: { display: false } },
+      y: { beginAtZero: true, grace: '12%', ticks: { stepSize: 1, color: '#94a3b8', font: { size: 11 } }, grid: { color: '#f1f5f9' }, border: { display: false } },
       x: { ticks: { color: '#94a3b8', font: { size: 11 } }, grid: { display: false }, border: { display: false } }
     }
   });
 
   chartMes = new Chart(document.getElementById('chart-mes'), {
+    plugins: [valueLabelsPlugin],
     type: 'bar',
     data: {
       // Verde claro para ventas por mes (más claro que el verde de "por año")
@@ -487,6 +518,7 @@ function buildCharts(rows) {
   });
 
   chartAnio = new Chart(document.getElementById('chart-anio'), {
+    plugins: [valueLabelsPlugin],
     type: 'bar',
     data: {
       // Verde intenso para ventas por año (más oscuro que el de "por mes")
@@ -528,12 +560,20 @@ function buildInteranualChart(rows) {
 
   if (chartMesInteranual) chartMesInteranual.destroy();
   chartMesInteranual = new Chart(document.getElementById('chart-mes-interanual'), {
+    plugins: [valueLabelsPlugin],
     type: 'bar',
     data: {
       labels: cortos.length ? cortos : ['Sin datos'],
       datasets: [{ label: 'Ventas', data: data.length ? data : [0], backgroundColor: barColors.length ? barColors : ['#86efac'], borderRadius: 6, borderSkipped: false }]
     },
-    options: commonOpts()
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + ctx.parsed.y + ' venta' + (ctx.parsed.y !== 1 ? 's' : '') } } },
+      scales: {
+        y: { beginAtZero: true, grace: '12%', ticks: { stepSize: 1, color: '#94a3b8', font: { size: 11 } }, grid: { color: '#f1f5f9' }, border: { display: false } },
+        x: { ticks: { color: '#94a3b8', font: { size: 11 } }, grid: { display: false }, border: { display: false } }
+      }
+    }
   });
 
   const summaryEl = document.getElementById('mes-interanual-summary');
@@ -618,6 +658,7 @@ async function initDashboard() {
   const cuotas = {'12':0,'24':0,'36':0,'48':0,'60':0,'72':0};
   let otrasCuotas = 0; // cuotas que no encajan en los buckets fijos (ej. 30, 18, etc.)
   const vendedores = {};
+  const mecSinVendedor = []; // lotes GRUPO MEC sin vendedor cargado (para control)
   const manzanaDisponibles = {}; // NUEVO: disponibles por manzana (excluye Etapa futura)
 
   rows.forEach(r => {
@@ -645,13 +686,21 @@ async function initDashboard() {
     // CORRECCIÓN #1: un lote "Reservado" todavía no es una venta concretada,
     // por lo tanto NO debe sumarse a ningún vendedor ni a Grupo MEC/Desarrollador.
     // Solo se cuenta como venta si SITUACIÓN === 'VENDIDO'.
-    if (sit === 'VENDIDO') {
-      if (vendPor.includes('DESARROLLADOR')) devCount++;
-      else mecCount++;
-
+    // REGLA (pestaña "Para IA"): un lote es venta de Grupo MEC cuando la columna
+    // "VENDIDO POR" dice GRUPO MEC. Los vendedores se cuentan sobre ESAS MISMAS filas,
+    // así la suma de los vendedores siempre coincide con el total de Grupo MEC.
+    const vendPorN = vendPor.replace(/\s+/g, ' ');
+    if (vendPorN === 'GRUPO MEC') {
+      mecCount++;
       if (vendMEC && vendMEC.length > 1) {
-        vendedores[vendMEC] = (vendedores[vendMEC] || 0) + 1;
+        const key = vendMEC.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ');
+        if (!vendedores[key]) vendedores[key] = { nombre: vendMEC, n: 0 };
+        vendedores[key].n++;
+      } else {
+        mecSinVendedor.push(getLoteLabel(r, g));
       }
+    } else if (vendPorN.includes('DESARROLLADOR')) {
+      devCount++;
     }
 
     // NUEVO #2: disponibilidad por manzana. Solo cuenta lotes "Disponible";
@@ -694,7 +743,7 @@ async function initDashboard() {
 
   // Vendedores
   const vList = document.getElementById('vendedor-list');
-  const sorted = Object.entries(vendedores).sort((a,b) => b[1] - a[1]);
+  const sorted = Object.values(vendedores).map(v => [v.nombre, v.n]).sort((a,b) => b[1] - a[1]);
   if (sorted.length === 0) {
     vList.innerHTML = '<div class="empty">Sin datos de vendedores aún</div>';
   } else {
@@ -706,6 +755,11 @@ async function initDashboard() {
       </div>`
     ).join('');
   }
+  // Control: la suma de vendedores debe coincidir con el total de Grupo MEC
+  const sumaVend = sorted.reduce((a, [, c]) => a + c, 0);
+  vList.innerHTML += (sumaVend === mecCount)
+    ? `<div style="margin-top:10px;font-size:12px;color:#15803d">✔ Total vendedores: ${sumaVend} = Grupo MEC: ${mecCount}</div>`
+    : `<div style="margin-top:10px;font-size:12px;color:#b91c1c;background:#fef2f2;border-radius:8px;padding:8px">⚠️ Suma de vendedores (${sumaVend}) ≠ Grupo MEC (${mecCount}). Lotes GRUPO MEC sin vendedor cargado: ${mecSinVendedor.join(', ') || '—'}</div>`;
 
   // NUEVO: Disponibilidad por manzana (ordenado numéricamente, excluye Etapa futura)
   const mzList = document.getElementById('manzana-list');
@@ -728,10 +782,312 @@ async function initDashboard() {
   buildCharts(rows);
   buildInteranualChart(rows); // NUEVO: comparativa mensual histórica (solo ventas)
 
+  // Datos para el informe PDF al desarrollador
+  window.__dashData = { rows, vendido, reservado, preventa, disponible, contado, cuotas, otrasCuotas };
+
   // Timestamp
   const now = new Date();
   document.getElementById('last-update').textContent =
     'Actualizado: ' + now.toLocaleDateString('es-AR') + ' ' + now.toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'});
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INFORME PDF AL DESARROLLADOR
+// Genera un PDF con: Distribución general, Forma de pago,
+// Estadísticas mensuales (gráfico + datos) y Resumen Nominal
+// (solo lotes VENDIDOS por Grupo MEC, columna E de la Sheet).
+// ═══════════════════════════════════════════════════════════════
+const PDF_LIBS = [
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js'
+];
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) return res();
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error('No se pudo cargar ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+// Lee una celda por posición de columna (A=0, B=1, ...) usando el orden de
+// encabezados de la Sheet; si no la encuentra, prueba por nombre de encabezado.
+function cellByCol(r, idx, fallbacks) {
+  const keys = Object.keys(r);
+  let v = keys[idx] !== undefined ? r[keys[idx]] : '';
+  if ((v === '' || v === undefined || v === null) && fallbacks) {
+    for (const k of fallbacks) { if (r[k] !== undefined && String(r[k]).trim() !== '') { v = r[k]; break; } }
+  }
+  return String(v ?? '').replace(/​/g, '').trim();
+}
+
+// Renderiza un gráfico Chart.js fuera de pantalla y devuelve la imagen PNG
+function renderChartImage(config, w, h) {
+  const holder = document.createElement('div');
+  holder.style.cssText = `position:fixed;left:-10000px;top:0;width:${w}px;height:${h}px;`;
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  holder.appendChild(cv);
+  document.body.appendChild(holder);
+  config.options = Object.assign({ responsive: false, animation: false, devicePixelRatio: 2 }, config.options || {});
+  const ch = new Chart(cv, config);
+  const img = ch.toBase64Image('image/png', 1);
+  ch.destroy();
+  holder.remove();
+  return img;
+}
+
+// Pestaña de la Sheet con el nominal para el desarrollador
+const INFORME_SHEET = 'Informe para desarrollador'; // 2da pestaña de la Sheet
+// Opcional: número "gid" de esa pestaña (aparece en la URL al abrirla: ...#gid=123456).
+// Si se completa, se usa en lugar del nombre y no importa cómo esté escrito.
+const INFORME_GID = '';
+
+// Parser CSV robusto (soporta comillas, comas y saltos de línea dentro de celdas)
+function parseCSVFull(text) {
+  const out = []; let row = [], cur = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else inQ = false; }
+      else cur += c;
+    } else if (c === '"') inQ = true;
+    else if (c === ',') { row.push(cur); cur = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(cur); out.push(row); row = []; cur = '';
+    } else cur += c;
+  }
+  if (cur !== '' || row.length) { row.push(cur); out.push(row); }
+  return out;
+}
+
+// Lee la pestaña "Informe para el desarrollador" directamente de la Google Sheet
+// (requiere que la planilla esté compartida como "Cualquier persona con el enlace: Lector").
+async function fetchInformeSheet() {
+  const sel = INFORME_GID ? `gid=${INFORME_GID}` : `sheet=${encodeURIComponent(INFORME_SHEET)}`;
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&${sel}&_=${Date.now()}`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  const txt = await resp.text();
+  if (/^\s*<(!DOCTYPE|html)/i.test(txt)) throw new Error('La planilla no es pública');
+  const data = parseCSVFull(txt).filter(r => r.some(c => String(c).trim() !== ''));
+  if (!data.length) return [];
+  const norm = h => String(h).replace(/​/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+  const head = data[0].map(norm);
+  // Control: si Google no encuentra la pestaña por nombre, devuelve la PRIMERA pestaña
+  // sin avisar. Verificamos que sea la correcta mirando sus encabezados.
+  if (!head.includes('COMPRADOR') || !head.some(h => h.includes('LOTE'))) {
+    throw new Error('la pestaña leída no tiene las columnas NRO LOTE / COMPRADOR (revisá el nombre exacto de la pestaña o completá INFORME_GID)');
+  }
+  // Busca la columna por nombre; si no la encuentra, usa la letra indicada
+  const col = (names, letterIdx) => { for (const n of names) { const i = head.indexOf(n); if (i >= 0) return i; } return letterIdx; };
+  const C = {
+    lote: col(['NRO LOTE', 'N° LOTE', 'Nº LOTE'], 1),         // B
+    precio: col(['PRECIO DE VENTA', 'PRECIO VENTA'], 3),      // D
+    comprador: col(['COMPRADOR'], 5),                          // F
+    forma: col(['CUOTAS CONTADO', 'CUOTAS/CONTADO'], 10),      // K
+    cant: col(['CANT CUOTAS', 'CANT. CUOTAS'], 11),            // L
+    cuota: col(['PRECIO CUOTA', 'PRECIO DE LA CUOTA'], 12)     // M
+  };
+  const v = (r, i) => String(r[i] ?? '').replace(/​/g, '').trim();
+  return data.slice(1)
+    .filter(r => v(r, C.lote) !== '' && norm(v(r, C.lote)) !== 'NRO LOTE')
+    .map(r => {
+      const forma = v(r, C.forma).toUpperCase();
+      return [
+        v(r, C.lote), v(r, C.precio), v(r, C.comprador),
+        forma === 'CONTADO' ? 'Contado' : forma === 'CUOTAS' ? 'Cuotas' : v(r, C.forma),
+        v(r, C.cant) || (forma === 'CONTADO' ? '—' : ''),
+        v(r, C.cuota) || (forma === 'CONTADO' ? '—' : '')
+      ];
+    })
+    .sort((a, b) => (parseInt(a[0], 10) || 0) - (parseInt(b[0], 10) || 0));
+}
+
+async function downloadDeveloperReport(btn) {
+  if (!window.__dashData) { alert('Esperá a que terminen de cargar los datos del tablero.'); return; }
+  const oldTxt = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ Generando PDF...';
+  try {
+    for (const src of PDF_LIBS) await loadScript(src);
+    let nominal, nominalError = null;
+    try { nominal = await fetchInformeSheet(); }
+    catch (e) { console.error(e); nominal = []; nominalError = e.message; }
+    if (nominalError && !confirm(`No se pudo leer la pestaña "${INFORME_SHEET}" (${nominalError}).\n\nRevisá que la planilla esté compartida como "Cualquier persona con el enlace: Lector".\n\n¿Generar el PDF igual, sin el Resumen Nominal?`)) return;
+    buildDeveloperPdf(window.__dashData, nominal, nominalError);
+  } catch (e) {
+    console.error(e);
+    alert('No se pudo generar el PDF: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = oldTxt;
+  }
+}
+
+function buildDeveloperPdf(D, nominal, nominalError) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const PW = 210, M = 14, CW = PW - M * 2;
+  const NAVY = [15, 23, 42], SLATE = [100, 116, 139], BORDO = [128, 0, 32];
+  const now = new Date();
+  const fecha = now.toLocaleDateString('es-AR');
+
+  // ── Ventas del Grupo MEC: columna "VENDIDO POR" = GRUPO MEC (misma regla que el tablero)
+  const MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  const MESES_TIT = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const mecRows = D.rows.filter(r => String(r['VENDIDO POR'] || '').replace(/​/g, '').toUpperCase().replace(/\s+/g, ' ').trim() === 'GRUPO MEC');
+  const totalVentas = mecRows.length;
+
+  let contado = 0, otras = 0;
+  const cuotas = { '12': 0, '24': 0, '36': 0, '48': 0, '60': 0, '72': 0 };
+  const byMes = {}, byAnio = {}, byAnioMes = {};
+  mecRows.forEach(r => {
+    const g = k => String(r[k] || '').replace(/​/g, '').trim();
+    const forma = (g('CUOTAS\nCONTADO') || g('CUOTAS   CONTADO') || g('CUOTAS CONTADO') || g('CUOTAS_CONTADO')).toUpperCase();
+    const cant = g('CANT CUOTAS') || g('CANTCUOTAS');
+    if (forma === 'CONTADO') contado++;
+    else if (forma === 'CUOTAS') { if (cuotas[cant] !== undefined) cuotas[cant]++; else otras++; }
+    const mes = g('MES').toUpperCase();
+    const anio = g('AÑO') || g('ANO') || g('Año');
+    if (MESES.includes(mes)) {
+      byMes[mes] = (byMes[mes] || 0) + 1;
+      if (anio && anio !== '0') { const k = anio + '|' + mes; byAnioMes[k] = (byAnioMes[k] || 0) + 1; }
+    }
+    if (anio && anio !== '0') byAnio[anio] = (byAnio[anio] || 0) + 1;
+  });
+
+  // ── Encabezado ─────────────────────────────
+  doc.setFillColor(...NAVY); doc.rect(0, 0, PW, 30, 'F');
+  doc.setFillColor(...BORDO); doc.rect(0, 30, PW, 1.2, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
+  doc.text('Informe al Desarrollador - Grupo MEC Propiedades', M, 14);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(203, 213, 225);
+  doc.text('Barrio Santa Teresita  ·  Ventas del Grupo MEC  ·  Fecha: ' + fecha, M, 22);
+  const logo = document.querySelector('img[alt="Grupo MEC"]');
+  if (logo && logo.src.startsWith('data:image')) {
+    try {
+      doc.setFillColor(255, 255, 255); doc.roundedRect(PW - M - 30, 4, 30, 22, 2, 2, 'F');
+      doc.addImage(logo.src, logo.src.includes('image/png') ? 'PNG' : 'JPEG', PW - M - 28.5, 5.5, 27, 19);
+    } catch (e) { /* si el logo falla, el informe sigue igual */ }
+  }
+
+  let y = 40;
+  const sectionTitle = (t) => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12.5); doc.setTextColor(...NAVY);
+    doc.text(t, M, y);
+    doc.setDrawColor(...BORDO); doc.setLineWidth(0.6); doc.line(M, y + 2, M + 22, y + 2);
+    doc.setLineWidth(0.2);
+    y += 7;
+  };
+  const tableBase = {
+    theme: 'grid',
+    styles: { font: 'helvetica', fontSize: 9, cellPadding: 1.8, textColor: [30, 41, 59], lineColor: [226, 232, 240] },
+    headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    margin: { left: M, right: M }
+  };
+
+  // ── 1. Total de Ventas ─────────────────────
+  sectionTitle('Total de Ventas');
+  doc.setFillColor(248, 250, 252); doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(M, y, CW, 22, 2, 2, 'FD');
+  doc.setFillColor(...BORDO); doc.rect(M, y, 1.6, 22, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(26); doc.setTextColor(...BORDO);
+  doc.text(String(totalVentas), M + 8, y + 15);
+  const numW = doc.getTextWidth(String(totalVentas));
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); doc.setTextColor(...SLATE);
+  doc.text(`lote${totalVentas !== 1 ? 's' : ''} vendido${totalVentas !== 1 ? 's' : ''} por Grupo MEC`, M + 8 + numW + 4, y + 14);
+  y += 30;
+
+  // ── 2. Formas de Pago ──────────────────────
+  sectionTitle('Formas de Pago');
+  const pagoLabels = ['Contado', '12 cuotas', '24 cuotas', '36 cuotas', '48 cuotas', '60 cuotas', '72 cuotas', 'Otras cuotas'];
+  const pagoData = [contado, cuotas['12'], cuotas['24'], cuotas['36'], cuotas['48'], cuotas['60'], cuotas['72'], otras];
+  const pagoCols = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#f97316', '#ef4444', '#6b7280'];
+  const pagoImg = renderChartImage({
+    plugins: [valueLabelsPlugin],
+    type: 'bar',
+    data: { labels: pagoLabels, datasets: [{ data: pagoData, backgroundColor: pagoCols, borderRadius: 4 }] },
+    options: {
+      indexAxis: 'y',
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { beginAtZero: true, grace: '10%', ticks: { stepSize: 1, color: '#64748b' }, grid: { color: '#eef2f7' } },
+        y: { ticks: { color: '#334155', font: { size: 13 } }, grid: { display: false } }
+      }
+    }
+  }, 620, 330);
+  doc.addImage(pagoImg, 'PNG', M, y, 112, 60);
+  const totalPago = pagoData.reduce((a, b) => a + b, 0);
+  doc.autoTable(Object.assign({}, tableBase, {
+    startY: y + 2,
+    margin: { left: M + 118, right: M },
+    head: [['Forma', 'Ventas', '%']],
+    body: pagoLabels.map((l, i) => [l, pagoData[i], totalPago ? (pagoData[i] / totalPago * 100).toFixed(0) + '%' : '0%'])
+      .concat([['Total', totalPago, totalPago ? '100%' : '0%']]),
+    columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
+    styles: Object.assign({}, tableBase.styles, { fontSize: 8.5, cellPadding: 1.3 }),
+    didParseCell: (d) => { if (d.section === 'body' && d.row.index === pagoLabels.length) { d.cell.styles.fontStyle = 'bold'; d.cell.styles.fillColor = [241, 245, 249]; } }
+  }));
+  y = Math.max(y + 62, doc.lastAutoTable.finalY + 4);
+  if (totalPago !== totalVentas) {
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...SLATE);
+    doc.text(`${totalVentas - totalPago} venta(s) sin forma de pago cargada en la planilla.`, M, y); y += 4;
+  }
+  y += 4;
+
+  // ── 3. Estadísticas Mensuales (solo gráfico, números dentro de cada columna) ──
+  sectionTitle('Estadísticas Mensuales');
+  const mesesConDatos = MESES.filter(m => byMes[m]);
+  const chH = Math.min(270 - y, CW * 420 / 900); // siempre entra en la primera hoja
+  const mesImg = renderChartImage({
+    plugins: [valueLabelsPlugin],
+    type: 'bar',
+    data: {
+      labels: mesesConDatos.length ? mesesConDatos.map(m => MESES_TIT[MESES.indexOf(m)].slice(0, 3)) : ['Sin datos'],
+      datasets: [{ label: 'Ventas', data: mesesConDatos.length ? mesesConDatos.map(m => byMes[m]) : [0], backgroundColor: '#800020', borderRadius: 4 }]
+    },
+    options: {
+      plugins: { legend: { display: false }, tooltip: { enabled: false }, valueLabels: { position: 'inside', color: '#ffffff', size: 22 } },
+      scales: {
+        x: { ticks: { color: '#334155', font: { size: 15 } }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { stepSize: 1, color: '#64748b', font: { size: 13 } }, grid: { color: '#eef2f7' } }
+      }
+    }
+  }, 900, Math.round(900 * chH / CW));
+  doc.addImage(mesImg, 'PNG', M, y, CW, chH);
+  y += chH + 4;
+
+  // ── 4. Resumen Nominal (pestaña "Informe para desarrollador") ──
+  doc.addPage(); y = 18;
+  sectionTitle('Resumen Nominal');
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...SLATE);
+  doc.text(nominalError ? `No se pudo leer la pestaña "${INFORME_SHEET}".` : `Lotes: ${nominal.length}`, M, y); y += 3;
+  doc.autoTable(Object.assign({}, tableBase, {
+    startY: y,
+    head: [['Nro Lote', 'Precio de Venta', 'Comprador', 'Cuotas / Contado', 'Cant. Cuotas', 'Precio Cuota']],
+    body: nominal.length ? nominal : [['—', '—', nominalError ? 'Sin datos (pestaña no disponible)' : 'Sin lotes cargados', '—', '—', '—']],
+    styles: Object.assign({}, tableBase.styles, { fontSize: 8.5 }),
+    columnStyles: {
+      0: { halign: 'center', cellWidth: 18 }, 1: { halign: 'right', cellWidth: 30 },
+      3: { halign: 'center', cellWidth: 26 }, 4: { halign: 'center', cellWidth: 20 }, 5: { halign: 'right', cellWidth: 28 }
+    },
+    headStyles: Object.assign({}, tableBase.headStyles, { fillColor: BORDO })
+  }));
+
+  // ── Pie de página ──────────────────────────
+  const pages = doc.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setDrawColor(226, 232, 240); doc.line(M, 285, PW - M, 285);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...SLATE);
+    doc.text('Sistema diseñado por SIGIC para Grupo MEC Propiedades', M, 290);
+    doc.text(`Página ${i} de ${pages}`, PW - M, 290, { align: 'right' });
+  }
+
+  doc.save(`Informe_Desarrollador_Santa_Teresita_${now.toISOString().slice(0, 10)}.pdf`);
 }
 
 initDashboard();
