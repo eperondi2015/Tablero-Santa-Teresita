@@ -910,11 +910,13 @@ async function fetchInformeSheet() {
     comprador: col(['COMPRADOR'], 5),                          // F
     forma: col(['CUOTAS CONTADO', 'CUOTAS/CONTADO'], 10),      // K
     cant: col(['CANT CUOTAS', 'CANT. CUOTAS'], 11),            // L
-    cuota: col(['PRECIO CUOTA', 'PRECIO DE LA CUOTA'], 12)     // M
+    cuota: col(['PRECIO CUOTA', 'PRECIO DE LA CUOTA'], 12),    // M
+    vendPor: col(['VENDIDO POR'], 4)                          // E
   };
   const v = (r, i) => String(r[i] ?? '').replace(/​/g, '').trim();
   return data.slice(1)
     .filter(r => v(r, C.lote) !== '' && norm(v(r, C.lote)) !== 'NRO LOTE')
+    .filter(r => norm(v(r, C.vendPor)) === 'GRUPO MEC') // solo lotes vendidos por Grupo MEC
     .map(r => {
       const forma = v(r, C.forma).toUpperCase();
       return [
